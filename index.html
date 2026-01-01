@@ -300,16 +300,17 @@
                     removeBox(line);
                 }
             } else if (e.key === 'Enter') {
-                e.preventDefault();
-                if (isGapLine) {
-                    line.classList.remove('gap-line');
-                    line.dataset.depth = depth;
-                }
-                createNewLine(line, depth);
-                
-                // 自動スライドがONの場合、ボックスを下に移動
-                if (autoSlideEnabled) {
+                // 自動スライドがONで、かつ移動可能な場合は改行を抑制
+                if (autoSlideEnabled && canSlideDown(line)) {
+                    e.preventDefault();
                     slideBoxDown(line);
+                } else {
+                    e.preventDefault();
+                    if (isGapLine) {
+                        line.classList.remove('gap-line');
+                        line.dataset.depth = depth;
+                    }
+                    createNewLine(line, depth);
                 }
             } else if (e.key === 'Backspace') {
                 if (line.textContent === '' && getCaretPos(line) === 0) {
@@ -459,20 +460,62 @@
             currentLine.focus();
         }
 
+        // スライド可能かチェックする関数
+        function canSlideDown(currentLine) {
+            const parentBox = getParentBox(currentLine);
+            if (parentBox === editorWrapper) return false;
+
+            const adjacentSiblings = [];
+            let nextElement = parentBox.nextElementSibling;
+            
+            while (nextElement) {
+                if (nextElement.classList.contains('box')) {
+                    adjacentSiblings.push(nextElement);
+                    nextElement = nextElement.nextElementSibling;
+                } else if (nextElement.classList.contains('line')) {
+                    break;
+                } else {
+                    nextElement = nextElement.nextElementSibling;
+                }
+            }
+
+            return adjacentSiblings.length > 0;
+        }
+
         // ボックスを下にスライド
         function slideBoxDown(currentLine) {
             const parentBox = getParentBox(currentLine);
             if (parentBox === editorWrapper) return;
 
             const grandparentBox = getParentBox(parentBox);
-            const siblings = Array.from(grandparentBox.children).filter(child => 
-                child.classList.contains('box') && child !== parentBox
-            );
+            
+            // 現在のキャレット位置を保存
+            const caretPos = getCaretPos(currentLine);
+            
+            // 現在のボックスの直後から連続する兄弟ボックスのみを取得
+            const adjacentSiblings = [];
+            let nextElement = parentBox.nextElementSibling;
+            
+            while (nextElement) {
+                if (nextElement.classList.contains('box')) {
+                    adjacentSiblings.push(nextElement);
+                    nextElement = nextElement.nextElementSibling;
+                } else if (nextElement.classList.contains('line')) {
+                    // 行が挟まったら連続性が途切れる
+                    break;
+                } else {
+                    nextElement = nextElement.nextElementSibling;
+                }
+            }
 
-            // 同じ親を持つ隣接するボックスの中で最下位に移動
-            if (siblings.length > 0) {
-                const lastSibling = siblings[siblings.length - 1];
-                grandparentBox.insertBefore(parentBox, lastSibling.nextSibling);
+            // 隣接する兄弟ボックスがある場合のみ、その最後尾に移動
+            if (adjacentSiblings.length > 0) {
+                const lastAdjacent = adjacentSiblings[adjacentSiblings.length - 1];
+                grandparentBox.insertBefore(parentBox, lastAdjacent.nextSibling);
+                
+                // フォーカスとキャレット位置を復元
+                currentLine.focus();
+                setCaretPos(currentLine, caretPos);
             }
         }
 
