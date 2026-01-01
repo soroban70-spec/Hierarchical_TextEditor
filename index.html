@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>階層型テキストエディタ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0a0a0a;
+            color: #e0e0e0;
+            transition: background-color 0.3s;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        body.light-mode {
+            background-color: #fafafa;
+            color: #1a1a1a;
+        }
+
+        .header {
+            display: flex;
+            gap: 10px;
+            padding: 12px 20px;
+            background-color: #1a1a1a;
+            border-bottom: 1px solid #333;
+            flex-shrink: 0;
+        }
+
+        body.light-mode .header {
+            background-color: #ffffff;
+            border-bottom: 1px solid #ddd;
+        }
+
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+            background-color: #5a4a8a;
+            color: white;
+        }
+
+        button:hover {
+            background-color: #6a5a9a;
+        }
+
+        button.toggle-active {
+            background-color: #7a6aaa;
+        }
+
+        body.light-mode button {
+            background-color: #8a7aba;
+        }
+
+        body.light-mode button:hover {
+            background-color: #9a8aca;
+        }
+
+        .editor-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .editor-wrapper {
+            max-width: 1200px;
+            margin: 0 auto;
+            min-height: 100%;
+        }
+
+        .box {
+            position: relative;
+            padding: 8px 12px;
+            margin-bottom: 12px;
+            border-radius: 2px;
+        }
+
+        .line {
+            min-height: 20px;
+            outline: none;
+            padding: 2px 0;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .gap-line {
+            min-height: 8px;
+            height: 8px;
+            outline: none;
+            padding: 0;
+            cursor: text;
+            opacity: 0.3;
+        }
+
+        .gap-line:focus {
+            opacity: 1;
+            min-height: 20px;
+            height: auto;
+            padding: 2px 0;
+        }
+
+        /* グラデーション色設定 - ダークモード */
+        .depth-0 { background-color: #3a2a5a; }
+        .depth-1 { background-color: #2a1a4a; }
+        .depth-2 { background-color: #1a0a2a; }
+        .depth-3 { background-color: #0a0a0a; }
+        .depth-4 { background-color: #1a0a2a; }
+        .depth-5 { background-color: #2a1a4a; }
+
+        /* グラデーション色設定 - ライトモード */
+        body.light-mode .depth-0 { background-color: #e8e0f5; }
+        body.light-mode .depth-1 { background-color: #d8d0e5; }
+        body.light-mode .depth-2 { background-color: #c8c0d5; }
+        body.light-mode .depth-3 { background-color: #f0f0f0; }
+        body.light-mode .depth-4 { background-color: #c8c0d5; }
+        body.light-mode .depth-5 { background-color: #d8d0e5; }
+
+        .nested-box {
+            margin-left: 24px;
+            margin-top: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <button id="themeToggle">ライトモード</button>
+        <button id="copyBtn">全文をコピー</button>
+        <button id="autoSlideToggle">自動スライド: OFF</button>
+    </div>
+
+    <div class="editor-container">
+        <div class="editor-wrapper" id="editorWrapper">
+            <div class="box depth-0" data-depth="0">
+                <div class="line" contenteditable="true" data-depth="0"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const editorWrapper = document.getElementById('editorWrapper');
+        const themeToggle = document.getElementById('themeToggle');
+        const copyBtn = document.getElementById('copyBtn');
+        const autoSlideToggle = document.getElementById('autoSlideToggle');
+
+        let autoSlideEnabled = false;
+        let isDarkMode = true;
+
+        // テーマ切替
+        themeToggle.addEventListener('click', () => {
+            isDarkMode = !isDarkMode;
+            if (isDarkMode) {
+                document.body.classList.remove('light-mode');
+                themeToggle.textContent = 'ライトモード';
+            } else {
+                document.body.classList.add('light-mode');
+                themeToggle.textContent = 'ダークモード';
+            }
+        });
+
+        // 自動スライド切替
+        autoSlideToggle.addEventListener('click', () => {
+            autoSlideEnabled = !autoSlideEnabled;
+            autoSlideToggle.textContent = `自動スライド: ${autoSlideEnabled ? 'ON' : 'OFF'}`;
+            autoSlideToggle.classList.toggle('toggle-active', autoSlideEnabled);
+        });
+
+        // 全文コピー
+        copyBtn.addEventListener('click', () => {
+            const text = getAllText();
+            navigator.clipboard.writeText(text).then(() => {
+                const originalText = copyBtn.textContent;
+                copyBtn.textContent = 'コピーしました!';
+                setTimeout(() => {
+                    copyBtn.textContent = originalText;
+                }, 2000);
+            });
+        });
+
+        // テキスト取得
+        function getAllText() {
+            const lines = document.querySelectorAll('.line:not(.gap-line)');
+            return Array.from(lines).map(line => line.textContent).join('\n');
+        }
+
+        // 深さ情報を取得
+        function getLineDepth(line) {
+            return parseInt(line.dataset.depth) || 0;
+        }
+
+        // 親ボックスを取得
+        function getParentBox(element) {
+            let parent = element.parentElement;
+            while (parent && !parent.classList.contains('box')) {
+                parent = parent.parentElement;
+            }
+            return parent;
+        }
+
+        // 深さのクラスを更新
+        function updateDepthClass(box, depth) {
+            const depthClass = `depth-${depth % 6}`;
+            box.className = box.className.replace(/depth-\d+/, depthClass);
+            if (!box.className.includes('depth-')) {
+                box.classList.add(depthClass);
+            }
+        }
+
+        // キャレット位置を取得
+        function getCaretPos(element) {
+            const selection = window.getSelection();
+            if (selection.rangeCount === 0) return 0;
+            const range = selection.getRangeAt(0);
+            const preRange = range.cloneRange();
+            preRange.selectNodeContents(element);
+            preRange.setEnd(range.endContainer, range.endOffset);
+            return preRange.toString().length;
+        }
+
+        // キャレット位置を設定
+        function setCaretPos(element, pos) {
+            const range = document.createRange();
+            const sel = window.getSelection();
+            let charCount = 0;
+
+            function traverse(node) {
+                if (node.nodeType === 3) {
+                    const nextCharCount = charCount + node.length;
+                    if (nextCharCount >= pos) {
+                        range.setStart(node, pos - charCount);
+                        return true;
+                    }
+                    charCount = nextCharCount;
+                } else if (node.nodeType === 1) {
+                    for (let i = 0; i < node.childNodes.length; i++) {
+                        if (traverse(node.childNodes[i])) return true;
+                    }
+                }
+                return false;
+            }
+
+            if (element.childNodes.length === 0) {
+                range.setStart(element, 0);
+            } else {
+                traverse(element);
+            }
+            range.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(range);
+        }
+
+        // すべての行を取得（ギャップラインを含む）
+        function getAllLines() {
+            return Array.from(document.querySelectorAll('.line'));
+        }
+
+        // キーイベント
+        // キーイベント
+        editorWrapper.addEventListener('keydown', (e) => {
+            // Tabキーのデフォルト動作を防ぐ
+            if (e.key === 'Tab') {
+                e.preventDefault();
+            }
+            const line = document.activeElement;
+            if (!line.classList.contains('line')) return;
+
+            const depth = getLineDepth(line);
+            const parentBox = getParentBox(line);
+            const isAtLineStart = getCaretPos(line) === 0;
+            const isGapLine = line.classList.contains('gap-line');
+
+            if (e.key === 'Tab') {
+                if (e.shiftKey && isAtLineStart && isFirstLineOfAll(line)) {
+                    // Shift + Tab: すべての行を第1階層ボックスに格納
+                    wrapAllInNewBox(line, depth);
+                } else if (!e.shiftKey) {
+                    // Tab: その行をその位置で新しいボックスに
+                    wrapLineInNewBox(line, depth);
+                }
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+
+                if (e.shiftKey && isAtLineStart && isFirstLineOfAll(line) && depth === 1) {
+                    // Shift + Esc: 1階層ボックスを解除
+                    unwrapFirstLevelBox(line);
+                } else if (!e.shiftKey) {
+                    // Esc: 行の存在するボックスを解除
+                    removeBox(line);
+                }
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (isGapLine) {
+                    line.classList.remove('gap-line');
+                    line.dataset.depth = depth;
+                }
+                createNewLine(line, depth);
+                
+                // 自動スライドがONの場合、ボックスを下に移動
+                if (autoSlideEnabled) {
+                    slideBoxDown(line);
+                }
+            } else if (e.key === 'Backspace') {
+                if (line.textContent === '' && getCaretPos(line) === 0) {
+                    e.preventDefault();
+                    deleteLineAndMerge(line);
+                }
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (e.shiftKey) {
+                    moveToNextDifferentDepthUp(line);
+                } else if (e.altKey) {
+                    moveToNextDifferentDepthUpWithCreate(line);
+                } else {
+                    moveToPreviousLine(line);
+                }
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (e.shiftKey) {
+                    moveToNextDifferentDepthDown(line);
+                } else if (e.altKey) {
+                    moveToNextDifferentDepthDownWithCreate(line);
+                } else {
+                    moveToNextLine(line);
+                }
+            }
+        });
+
+        // 上の行へ移動
+        function moveToPreviousLine(currentLine) {
+            cleanupEmptyLines();
+            const allLines = getAllLines();
+            const currentIndex = allLines.indexOf(currentLine);
+            if (currentIndex > 0) {
+                allLines[currentIndex - 1].focus();
+            }
+        }
+
+        // 下の行へ移動
+        function moveToNextLine(currentLine) {
+            cleanupEmptyLines();
+            const allLines = getAllLines();
+            const currentIndex = allLines.indexOf(currentLine);
+            if (currentIndex < allLines.length - 1) {
+                allLines[currentIndex + 1].focus();
+            }
+        }
+
+        // 上の異なる階層へ移動
+        function moveToNextDifferentDepthUp(currentLine) {
+            cleanupEmptyLines();
+            const allLines = getAllLines();
+            const currentIndex = allLines.indexOf(currentLine);
+            const currentDepth = getLineDepth(currentLine);
+            
+            for (let i = currentIndex - 1; i >= 0; i--) {
+                if (getLineDepth(allLines[i]) !== currentDepth) {
+                    allLines[i].focus();
+                    setCaretPos(allLines[i], 0);
+                    return;
+                }
+            }
+        }
+
+        // 下の異なる階層へ移動
+        function moveToNextDifferentDepthDown(currentLine) {
+            cleanupEmptyLines();
+            const allLines = getAllLines();
+            const currentIndex = allLines.indexOf(currentLine);
+            const currentDepth = getLineDepth(currentLine);
+            
+            for (let i = currentIndex + 1; i < allLines.length; i++) {
+                if (getLineDepth(allLines[i]) !== currentDepth) {
+                    allLines[i].focus();
+                    setCaretPos(allLines[i], 0);
+                    return;
+                }
+            }
+        }
+
+        // 文章が入力されておらず隣接する同ブロック内の行が存在しない行を削除
+        function cleanupEmptyLines() {
+            const allLines = getAllLines();
+            
+            allLines.forEach(line => {
+                // 行が空かつfocusされていない場合
+                if (line.textContent === '' && document.activeElement !== line) {
+                    const parentBox = getParentBox(line);
+                    
+                    // その行の次の兄弟要素をチェック
+                    let nextSibling = line.nextElementSibling;
+                    let hasAdjacentLine = false;
+                    
+                    // 次の要素が.lineか確認
+                    if (nextSibling && nextSibling.classList.contains('line')) {
+                        hasAdjacentLine = true;
+                    }
+                    
+                    // その行の前の兄弟要素もチェック
+                    let prevSibling = line.previousElementSibling;
+                    if (prevSibling && prevSibling.classList.contains('line')) {
+                        hasAdjacentLine = true;
+                    }
+                    
+                    // 隣接する行がない場合のみ削除
+                    if (!hasAdjacentLine) {
+                        line.remove();
+                    }
+                }
+            });
+            
+            // すべての空のボックスを再帰的に削除
+            function removeEmptyBoxes(box) {
+                const children = Array.from(box.children);
+                children.forEach(child => {
+                    if (child.classList.contains('box')) {
+                        removeEmptyBoxes(child);
+                        if (child.children.length === 0) {
+                            child.remove();
+                        }
+                    }
+                });
+            }
+            
+            removeEmptyBoxes(editorWrapper);
+        }
+
+        // 全行の最初の行かチェック
+        function isFirstLineOfAll(currentLine) {
+            const allLines = getAllLines();
+            return allLines[0] === currentLine;
+        }
+
+        // その行をその位置で新しいボックスに変換
+        function wrapLineInNewBox(currentLine, depth) {
+            const newBox = document.createElement('div');
+            newBox.classList.add('box', 'nested-box');
+            newBox.dataset.depth = depth + 1;
+            updateDepthClass(newBox, depth + 1);
+
+            const parentBox = getParentBox(currentLine);
+            
+            // 現在の行を新しいボックスに移動
+            currentLine.dataset.depth = depth + 1;
+            parentBox.insertBefore(newBox, currentLine);
+            newBox.appendChild(currentLine);
+            
+            currentLine.focus();
+        }
+
+        // ボックスを下にスライド
+        function slideBoxDown(currentLine) {
+            const parentBox = getParentBox(currentLine);
+            if (parentBox === editorWrapper) return;
+
+            const grandparentBox = getParentBox(parentBox);
+            const siblings = Array.from(grandparentBox.children).filter(child => 
+                child.classList.contains('box') && child !== parentBox
+            );
+
+            // 同じ親を持つ隣接するボックスの中で最下位に移動
+            if (siblings.length > 0) {
+                const lastSibling = siblings[siblings.length - 1];
+                grandparentBox.insertBefore(parentBox, lastSibling.nextSibling);
+            }
+        }
+
+        // 上方向の異なる階層に移動（行作成機能付き）
+        function moveToNextDifferentDepthUpWithCreate(currentLine) {
+            cleanupEmptyLines();
+            const currentDepth = getLineDepth(currentLine);
+            
+            // 親階層がある場合、必ず親階層の直上に行を追加
+            if (currentDepth > 0) {
+                const parentBox = getParentBox(currentLine);
+                const grandparentBox = getParentBox(parentBox);
+                
+                const newLine = document.createElement('div');
+                newLine.classList.add('line');
+                newLine.dataset.depth = currentDepth - 1;
+                newLine.contentEditable = true;
+                
+                grandparentBox.insertBefore(newLine, parentBox);
+                newLine.focus();
+                setCaretPos(newLine, 0);
+            }
+        }
+
+        // 下方向の異なる階層に移動（行作成機能付き）
+        function moveToNextDifferentDepthDownWithCreate(currentLine) {
+            cleanupEmptyLines();
+            const currentDepth = getLineDepth(currentLine);
+            
+            // 親階層がある場合、必ず親階層の直下に行を追加
+            if (currentDepth > 0) {
+                const parentBox = getParentBox(currentLine);
+                const grandparentBox = getParentBox(parentBox);
+                
+                const newLine = document.createElement('div');
+                newLine.classList.add('line');
+                newLine.dataset.depth = currentDepth - 1;
+                newLine.contentEditable = true;
+                
+                grandparentBox.insertBefore(newLine, parentBox.nextSibling);
+                newLine.focus();
+                setCaretPos(newLine, 0);
+            }
+        }
+
+        // 新しい行を作成
+        function createNewLine(currentLine, depth) {
+            const newLine = document.createElement('div');
+            newLine.classList.add('line');
+            newLine.dataset.depth = depth;
+            newLine.contentEditable = true;
+
+            const parentBox = getParentBox(currentLine);
+            const nextElement = currentLine.nextElementSibling;
+            
+            if (nextElement && nextElement.classList.contains('box')) {
+                parentBox.insertBefore(newLine, nextElement);
+            } else {
+                currentLine.parentNode.insertBefore(newLine, currentLine.nextSibling);
+            }
+            
+            newLine.focus();
+
+            if (autoSlideEnabled) {
+                scrollToElement(newLine);
+            }
+        }
+
+        // 新しいボックスを作成
+        function createNewBox(currentLine, depth) {
+            const newBox = document.createElement('div');
+            newBox.classList.add('box', 'nested-box');
+            newBox.dataset.depth = depth + 1;
+            updateDepthClass(newBox, depth + 1);
+
+            const newLine = document.createElement('div');
+            newLine.classList.add('line');
+            newLine.dataset.depth = depth + 1;
+            newLine.contentEditable = true;
+
+            newBox.appendChild(newLine);
+            
+            const parentBox = getParentBox(currentLine);
+            const nextElement = currentLine.nextElementSibling;
+            
+            if (nextElement && nextElement.classList.contains('box')) {
+                parentBox.insertBefore(newBox, nextElement);
+            } else {
+                currentLine.parentNode.insertBefore(newBox, currentLine.nextSibling);
+            }
+            
+            newLine.focus();
+
+            if (autoSlideEnabled) {
+                scrollToElement(newLine);
+            }
+        }
+
+        // すべての行を新しいボックスに格納
+        function wrapAllInNewBox(currentLine, depth) {
+            const parentBox = getParentBox(currentLine);
+            const allElements = Array.from(parentBox.children);
+
+            const newBox = document.createElement('div');
+            newBox.classList.add('box', 'nested-box');
+            newBox.dataset.depth = depth + 1;
+            updateDepthClass(newBox, depth + 1);
+
+            allElements.forEach(element => {
+                if (element.classList.contains('line')) {
+                    element.dataset.depth = depth + 1;
+                    newBox.appendChild(element);
+                } else if (element.classList.contains('box')) {
+                    const boxDepth = parseInt(element.dataset.depth);
+                    element.dataset.depth = boxDepth + 1;
+                    updateDepthClass(element, boxDepth + 1);
+                    updateChildrenDepth(element, 1);
+                    newBox.appendChild(element);
+                }
+            });
+
+            parentBox.appendChild(newBox);
+            currentLine.focus();
+        }
+
+        // 子要素の深さを更新
+        function updateChildrenDepth(box, increment) {
+            const children = box.querySelectorAll('.line, .box');
+            children.forEach(child => {
+                const currentDepth = parseInt(child.dataset.depth);
+                child.dataset.depth = currentDepth + increment;
+                if (child.classList.contains('box')) {
+                    updateDepthClass(child, currentDepth + increment);
+                }
+            });
+        }
+
+        // ボックスを解除
+        function removeBox(currentLine) {
+            const parentBox = getParentBox(currentLine);
+            const depth = getLineDepth(currentLine);
+
+            if (parentBox === editorWrapper || !parentBox.classList.contains('nested-box')) return;
+
+            const grandparentBox = getParentBox(parentBox);
+            const allChildren = Array.from(parentBox.children);
+
+            allChildren.forEach(child => {
+                if (child.classList.contains('line')) {
+                    child.dataset.depth = depth - 1;
+                    grandparentBox.insertBefore(child, parentBox.nextSibling);
+                } else if (child.classList.contains('box')) {
+                    const boxDepth = parseInt(child.dataset.depth);
+                    child.dataset.depth = boxDepth - 1;
+                    updateDepthClass(child, boxDepth - 1);
+                    updateChildrenDepth(child, -1);
+                    grandparentBox.insertBefore(child, parentBox.nextSibling);
+                }
+            });
+
+            parentBox.remove();
+            currentLine.focus();
+        }
+
+        // 第1階層ボックスを解除
+        function unwrapFirstLevelBox(currentLine) {
+            const parentBox = getParentBox(currentLine);
+
+            if (parentBox === editorWrapper || parseInt(parentBox.dataset.depth) !== 1) return;
+
+            const grandparentBox = getParentBox(parentBox);
+            const allChildren = Array.from(parentBox.children);
+            const insertPosition = parentBox.nextSibling;
+
+            allChildren.forEach(child => {
+                if (child.classList.contains('line')) {
+                    child.dataset.depth = 0;
+                } else if (child.classList.contains('box')) {
+                    const boxDepth = parseInt(child.dataset.depth);
+                    child.dataset.depth = boxDepth - 1;
+                    updateDepthClass(child, boxDepth - 1);
+                    updateChildrenDepth(child, -1);
+                }
+            });
+
+            allChildren.forEach(child => {
+                grandparentBox.insertBefore(child, insertPosition);
+            });
+
+            parentBox.remove();
+            currentLine.focus();
+        }
+
+        // 行を削除してマージ
+        function deleteLineAndMerge(currentLine) {
+            const allLines = getAllLines();
+            const currentIndex = allLines.indexOf(currentLine);
+            
+            if (currentIndex > 0) {
+                const prevLine = allLines[currentIndex - 1];
+                const prevText = prevLine.textContent;
+                prevLine.textContent = prevText + currentLine.textContent;
+                
+                const parentBox = getParentBox(currentLine);
+                currentLine.remove();
+                
+                // 親ボックスが空になったら削除
+                if (parentBox !== editorWrapper && parentBox.querySelectorAll(':scope > .line').length === 0) {
+                    parentBox.remove();
+                }
+                
+                prevLine.focus();
+                setCaretPos(prevLine, prevText.length);
+            }
+        }
+
+        // スクロール
+        function scrollToElement(element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        // 初期フォーカス
+        document.querySelector('.line').focus();
+    </script>
+</body>
+</html>
