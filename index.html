@@ -194,7 +194,11 @@
         // テキスト取得
         function getAllText() {
             const lines = document.querySelectorAll('.line:not(.gap-line)');
-            return Array.from(lines).map(line => line.textContent).join('\n');
+            return Array.from(lines).map(line => {
+                const depth = parseInt(line.dataset.depth) || 0;
+                const indent = '        '.repeat(depth); // 半角8文字 × 階層数
+                return indent + line.textContent;
+            }).join('\n');
         }
 
         // 深さ情報を取得
@@ -315,7 +319,8 @@
                     createNewLine(line, depth);
                 }
             } else if (e.key === 'Backspace') {
-                if (line.textContent === '' && getCaretPos(line) === 0) {
+                const caretPos = getCaretPos(line);
+                if (caretPos === 0) {
                     e.preventDefault();
                     deleteLineAndMerge(line);
                 }
@@ -565,10 +570,25 @@
 
         // 新しい行を作成
         function createNewLine(currentLine, depth) {
+            const selection = window.getSelection();
+            const range = selection.getRangeAt(0);
+            
+            // カーソル位置以降のコンテンツを取得
+            const afterRange = range.cloneRange();
+            afterRange.selectNodeContents(currentLine);
+            afterRange.setStart(range.endContainer, range.endOffset);
+            const afterContent = afterRange.cloneContents();
+            
+            // 現在の行からカーソル以降を削除
+            afterRange.deleteContents();
+            
             const newLine = document.createElement('div');
             newLine.classList.add('line');
             newLine.dataset.depth = depth;
             newLine.contentEditable = true;
+            
+            // 取得したコンテンツを新しい行に追加
+            newLine.appendChild(afterContent);
 
             const parentBox = getParentBox(currentLine);
             const nextElement = currentLine.nextElementSibling;
@@ -580,6 +600,7 @@
             }
             
             newLine.focus();
+            setCaretPos(newLine, 0);
 
             if (autoSlideEnabled) {
                 scrollToElement(newLine);
