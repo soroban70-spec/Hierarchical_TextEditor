@@ -194,7 +194,11 @@
         // テキスト取得
         function getAllText() {
             const lines = document.querySelectorAll('.line:not(.gap-line)');
-            return Array.from(lines).map(line => line.textContent).join('\n');
+            return Array.from(lines).map(line => {
+                const depth = parseInt(line.dataset.depth) || 0;
+                const indent = '        '.repeat(depth); // 半角8文字 × 階層数
+                return indent + line.textContent;
+            }).join('\n');
         }
 
         // 深さ情報を取得
