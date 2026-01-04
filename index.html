@@ -288,7 +288,7 @@
             const isGapLine = line.classList.contains('gap-line');
 
             if (e.key === 'Tab') {
-                if (e.shiftKey && isAtLineStart && isFirstLineOfAll(line)) {
+                if (e.shiftKey && isAtLineStart && isFirstLineInBox(line)) {
                     // Shift + Tab: すべての行を第1階層ボックスに格納
                     wrapAllInNewBox(line, depth);
                 } else if (!e.shiftKey) {
@@ -447,6 +447,13 @@
         function isFirstLineOfAll(currentLine) {
             const allLines = getAllLines();
             return allLines[0] === currentLine;
+        }
+
+        // 親ボックス内の最初の行かチェック
+        function isFirstLineInBox(currentLine) {
+            const parentBox = getParentBox(currentLine);
+            const linesInBox = Array.from(parentBox.querySelectorAll(':scope > .line'));
+            return linesInBox[0] === currentLine;
         }
 
         // その行をその位置で新しいボックスに変換
@@ -669,7 +676,7 @@
             const grandparentBox = getParentBox(parentBox);
             const allChildren = Array.from(parentBox.children);
 
-            allChildren.forEach(child => {
+            allChildren.reverse().forEach(child => {
                 if (child.classList.contains('line')) {
                     child.dataset.depth = depth - 1;
                     grandparentBox.insertBefore(child, parentBox.nextSibling);
@@ -707,7 +714,7 @@
                 }
             });
 
-            allChildren.forEach(child => {
+            allChildren.reverse().forEach(child => {
                 grandparentBox.insertBefore(child, insertPosition);
             });
 
