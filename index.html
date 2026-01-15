@@ -134,6 +134,9 @@
             margin-left: 24px;
             margin-top: 0;
         }
+        .hidden-ancestor {
+            display: none !important;
+        }
     </style>
 </head>
 <body>
@@ -141,6 +144,9 @@
         <button id="themeToggle">ライトモード</button>
         <button id="copyBtn">全文をコピー</button>
         <button id="autoSlideToggle">自動スライド: OFF</button>
+        <button id="hideAncestorsBtn">上位階層を非表示</button>
+        <button id="showAllBtn">全て表示</button>
+        <button id="autoHideToggle">自動非表示: OFF</button>
     </div>
 
     <div class="editor-container">
@@ -156,9 +162,13 @@
         const themeToggle = document.getElementById('themeToggle');
         const copyBtn = document.getElementById('copyBtn');
         const autoSlideToggle = document.getElementById('autoSlideToggle');
+        const hideAncestorsBtn = document.getElementById('hideAncestorsBtn');
+        const showAllBtn = document.getElementById('showAllBtn');
+        const autoHideToggle = document.getElementById('autoHideToggle');
 
         let autoSlideEnabled = false;
         let isDarkMode = true;
+        let hideAncestorsEnabled = false;
 
         // テーマ切替
         themeToggle.addEventListener('click', () => {
@@ -177,6 +187,111 @@
             autoSlideEnabled = !autoSlideEnabled;
             autoSlideToggle.textContent = `自動スライド: ${autoSlideEnabled ? 'ON' : 'OFF'}`;
             autoSlideToggle.classList.toggle('toggle-active', autoSlideEnabled);
+        });
+
+
+        // 全てのボックスを表示する関数
+        function showAllBoxes() {
+            try {
+                // 親ボックスを元の位置に戻す
+                if (originalParentInfo) {
+                    const parentBox = editorWrapper.querySelector('.box:not(.hidden-ancestor)');
+                    if (parentBox && originalParentInfo.parent) {
+                        originalParentInfo.parent.insertBefore(parentBox, originalParentInfo.nextSibling);
+                    }
+                    originalParentInfo = null;
+                }
+                
+                const hiddenBoxes = document.querySelectorAll('.hidden-ancestor');
+                hiddenBoxes.forEach(box => box.classList.remove('hidden-ancestor'));
+            } catch (error) {
+                console.error('showAllBoxes error:', error);
+            }
+        }
+
+        // 上位階層を非表示にする関数
+        let originalParentInfo = null; // 元の位置情報を保存
+        
+        function hideAncestorBoxes(currentLine) {
+            try {
+                showAllBoxes();
+                
+                if (!currentLine || !currentLine.classList) return;
+                
+                const parentBox = getParentBox(currentLine);
+                if (!parentBox || parentBox === editorWrapper) return;
+                
+                const grandparentBox = getParentBox(parentBox);
+                if (!grandparentBox || grandparentBox === editorWrapper) return;
+                
+                const greatGrandparentBox = getParentBox(grandparentBox);
+                if (!greatGrandparentBox) return;
+                
+                // 祖父ボックスの元の位置情報を保存
+                originalParentInfo = {
+                    parent: greatGrandparentBox,
+                    nextSibling: grandparentBox.nextSibling
+                };
+                
+                // 祖父ボックスをeditorWrapperの先頭に一時移動
+                editorWrapper.insertBefore(grandparentBox, editorWrapper.firstChild);
+                
+                // 全てのボックス（移動した祖父ボックス以外）を非表示
+                Array.from(editorWrapper.children).forEach(child => {
+                    if (child !== grandparentBox && child.classList.contains('box')) {
+                        child.classList.add('hidden-ancestor');
+                    }
+                });
+            } catch (error) {
+                console.error('hideAncestorBoxes error:', error);
+            }
+        }
+
+        // 上位階層を非表示ボタン
+        let lastFocusedLine = null;
+        editorWrapper.addEventListener('focusin', (e) => {
+            if (e.target.classList && e.target.classList.contains('line')) {
+                lastFocusedLine = e.target;
+            }
+        });
+        
+        hideAncestorsBtn.addEventListener('click', () => {
+            try {
+                const currentLine = lastFocusedLine || document.activeElement;
+                if (currentLine && currentLine.classList && currentLine.classList.contains('line')) {
+                    hideAncestorBoxes(currentLine);
+                    currentLine.focus();
+                }
+            } catch (error) {
+                console.error('hideAncestorsBtn click error:', error);
+            }
+        });
+
+        // 全て表示ボタン
+        showAllBtn.addEventListener('click', () => {
+            try {
+                showAllBoxes();
+                if (lastFocusedLine) {
+                    lastFocusedLine.focus();
+                }
+            } catch (error) {
+                console.error('showAllBtn click error:', error);
+            }
+        });
+
+        // 自動非表示切替ボタン
+        autoHideToggle.addEventListener('click', () => {
+            try {
+                hideAncestorsEnabled = !hideAncestorsEnabled;
+                autoHideToggle.textContent = `自動非表示: ${hideAncestorsEnabled ? 'ON' : 'OFF'}`;
+                autoHideToggle.classList.toggle('toggle-active', hideAncestorsEnabled);
+                
+                if (!hideAncestorsEnabled) {
+                    showAllBoxes();
+                }
+            } catch (error) {
+                console.error('autoHideToggle click error:', error);
+            }
         });
 
         // 全文コピー
@@ -401,9 +516,20 @@
             const allLines = getAllLines();
             
             allLines.forEach(line => {
-                // 行が空かつfocusされていない場合
                 if (line.textContent === '' && document.activeElement !== line) {
                     const parentBox = getParentBox(line);
+                    
+                    // 親ボックスまたはその祖先が非表示の場合はスキップ
+                    let checkBox = parentBox;
+                    let isInHiddenAncestor = false;
+                    while (checkBox && checkBox !== editorWrapper) {
+                        if (checkBox.classList.contains('hidden-ancestor')) {
+                            isInHiddenAncestor = true;
+                            break;
+                        }
+                        checkBox = getParentBox(checkBox);
+                    }
+                    if (isInHiddenAncestor) return;
                     
                     // その行の次の兄弟要素をチェック
                     let nextSibling = line.nextElementSibling;
@@ -433,7 +559,7 @@
                 children.forEach(child => {
                     if (child.classList.contains('box')) {
                         removeEmptyBoxes(child);
-                        if (child.children.length === 0) {
+                        if (child.children.length === 0 && !child.classList.contains('hidden-ancestor')) {
                             child.remove();
                         }
                     }
@@ -594,6 +720,10 @@
 
             if (autoSlideEnabled) {
                 scrollToElement(newLine);
+            }
+            
+            if (hideAncestorsEnabled) {
+                hideAncestorBoxes(newLine);
             }
         }
 
