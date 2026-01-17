@@ -285,10 +285,6 @@
                 hideAncestorsEnabled = !hideAncestorsEnabled;
                 autoHideToggle.textContent = `自動非表示: ${hideAncestorsEnabled ? 'ON' : 'OFF'}`;
                 autoHideToggle.classList.toggle('toggle-active', hideAncestorsEnabled);
-                
-                if (!hideAncestorsEnabled) {
-                    showAllBoxes();
-                }
             } catch (error) {
                 console.error('autoHideToggle click error:', error);
             }
