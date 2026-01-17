@@ -214,6 +214,9 @@
         
         function hideAncestorBoxes(currentLine) {
             try {
+                // カーソル位置を保存
+                const caretPos = getCaretPos(currentLine);
+                
                 showAllBoxes();
                 
                 if (!currentLine || !currentLine.classList) return;
@@ -239,13 +242,17 @@
                 // 全てのボックス（移動した祖父ボックス以外）を非表示
                 Array.from(editorWrapper.children).forEach(child => {
                     if (child !== grandparentBox && child.classList.contains('box')) {
-                        child.classList.add('hidden-ancestor');
-                    }
-                });
-            } catch (error) {
-                console.error('hideAncestorBoxes error:', error);
-            }
+                    child.classList.add('hidden-ancestor');
+                }
+            });
+            
+            // カーソル位置を復元
+            currentLine.focus();
+            setCaretPos(currentLine, caretPos);
+        } catch (error) {
+            console.error('hideAncestorBoxes error:', error);
         }
+    }
 
         // 上位階層を非表示ボタン
         let lastFocusedLine = null;
@@ -285,10 +292,6 @@
                 hideAncestorsEnabled = !hideAncestorsEnabled;
                 autoHideToggle.textContent = `自動非表示: ${hideAncestorsEnabled ? 'ON' : 'OFF'}`;
                 autoHideToggle.classList.toggle('toggle-active', hideAncestorsEnabled);
-                
-                if (!hideAncestorsEnabled) {
-                    showAllBoxes();
-                }
             } catch (error) {
                 console.error('autoHideToggle click error:', error);
             }
@@ -421,17 +424,56 @@
                     removeBox(line);
                 }
             } else if (e.key === 'Enter') {
-                // 自動スライドがONで、かつ移動可能な場合は改行を抑制
-                if (autoSlideEnabled && canSlideDown(line)) {
-                    e.preventDefault();
-                    slideBoxDown(line);
-                } else {
-                    e.preventDefault();
-                    if (isGapLine) {
-                        line.classList.remove('gap-line');
-                        line.dataset.depth = depth;
+                e.preventDefault();
+                
+                // 自動非表示がONの場合の処理
+                if (hideAncestorsEnabled) {
+                    const parentBox = getParentBox(line);
+                    if (parentBox === editorWrapper) {
+                        if (isGapLine) {
+                            line.classList.remove('gap-line');
+                            line.dataset.depth = depth;
+                        }
+                        createNewLine(line, depth);
+                        return;
                     }
-                    createNewLine(line, depth);
+                    
+                    const grandparentBox = getParentBox(parentBox);
+                    if (grandparentBox === editorWrapper) {
+                        if (isGapLine) {
+                            line.classList.remove('gap-line');
+                            line.dataset.depth = depth;
+                        }
+                        createNewLine(line, depth);
+                        return;
+                    }
+                    
+                    const greatGrandparentBox = getParentBox(grandparentBox);
+                    
+                    // 祖父ボックスが存在し、かつ非表示になっていない場合のみ非表示処理
+                    if (greatGrandparentBox && !grandparentBox.classList.contains('hidden-ancestor')) {
+                        // 非表示処理のみ実行（改行なし）
+                        hideAncestorBoxes(line);
+                    } else {
+                        // すでに非表示の場合は通常の改行処理
+                        if (isGapLine) {
+                            line.classList.remove('gap-line');
+                            line.dataset.depth = depth;
+                        }
+                        createNewLine(line, depth);
+                    }
+                } else {
+                    // 自動非表示がOFFの場合は通常の改行処理
+                    // 自動スライドがONで、かつ移動可能な場合は改行を抑制
+                    if (autoSlideEnabled && canSlideDown(line)) {
+                        slideBoxDown(line);
+                    } else {
+                        if (isGapLine) {
+                            line.classList.remove('gap-line');
+                            line.dataset.depth = depth;
+                        }
+                        createNewLine(line, depth);
+                    }
                 }
             } else if (e.key === 'Backspace') {
                 if (line.textContent === '' && getCaretPos(line) === 0) {
@@ -720,10 +762,6 @@
 
             if (autoSlideEnabled) {
                 scrollToElement(newLine);
-            }
-            
-            if (hideAncestorsEnabled) {
-                hideAncestorBoxes(newLine);
             }
         }
 
